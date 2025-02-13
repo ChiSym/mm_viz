@@ -1,0 +1,15 @@
+[project]
+name = "mm-viz"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "ipdb>=0.13.13",
+    "ipykernel>=6.29.5",
+    "jax>=0.5.0",
+    "jaxtyping>=0.2.37",
+    "plotnine>=0.14.5",
+    "polars>=1.22.0",
+    "pyarrow>=19.0.0",
+]
