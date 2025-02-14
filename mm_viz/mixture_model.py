@@ -1,6 +1,7 @@
 import jax
 from jaxtyping import Array, Float, Bool, Integer
 import jax.numpy as jnp
+from functools import partial
 
 
 def gibbs_pi(ALPHA_PI: float, key: Array, c: Bool[Array, 'N l']) -> Float[Array, 'l']:
@@ -57,3 +58,26 @@ def score_x(x: Bool[Array, 'N K c'], c: Bool[Array, 'N l'], w: Float[Array, 'l K
 
 def score(ALPHA_PI: float, ALPHA_W: float, pi, w, c, x):
     return score_pi(ALPHA_PI, pi) + score_w(ALPHA_W, w) + score_c(c, pi) + score_x(x, c, w)
+
+def forward_sample(key, ALPHA_PI, ALPHA_W, l, K, categories, N):
+    key, subkey = jax.random.split(key)
+    pi = jnp.log(jax.random.dirichlet(subkey, ALPHA_PI * jnp.ones(l)))
+
+    key, subkey = jax.random.split(key)
+    w = jnp.log(jax.random.dirichlet(subkey, ALPHA_W * jnp.ones((l, K, categories))))
+
+    key, subkey = jax.random.split(key)
+    c = jax.random.gumbel(subkey, shape=(N, l)) + pi[None, :]
+    c = jnp.max(c, axis=-1)[..., None] == c
+
+    key, subkey = jax.random.split(key)
+    x_logits = jnp.einsum('Nl,lKC->NKC', c, w)
+    x = jax.random.gumbel(subkey, shape=(N, K, categories)) + x_logits
+    x = jnp.max(x, axis=-1)[..., None] == x
+
+    return pi, w, c, x
+
+def sbc(l, K, categories, N, ALPHA_PI, ALPHA_W, key):
+    pi_gt, w_gt, c_gt, x = forward_sample(key, ALPHA_PI, ALPHA_W, l, K, categories, N)
+    pi, w, c, s = gibbs(ALPHA_PI, ALPHA_W, l, key, x, num_steps=100)
+    return pi_gt, w_gt, c_gt, x, pi, w, c, s

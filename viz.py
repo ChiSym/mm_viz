@@ -7,25 +7,39 @@ import jax
 from jaxtyping import Array, Float, Bool, Integer
 import jax.numpy as jnp
 
-ALPHA_PI = 1e-2
-ALPHA_W = 1e-2
+ALPHA_PI = 1
+ALPHA_W = 1
 l = 2 # num clusters
 categories = 2 # num categories
 N = 100 
-K = 1
-k = jax.random.key(1234)
-x = jax.nn.one_hot(jax.random.bernoulli(k, p=.5, shape=(N, K)).astype(jnp.int32), categories, axis=-1) 
+K = 5
+key = jax.random.key(1234)
+
+# %%
+from mm_viz.mixture_model import forward_sample
+pi_gt, w_gt, c_gt, x = forward_sample(key, ALPHA_PI, ALPHA_W, l, K, categories, N)
 
 # %%
 from mm_viz.mixture_model import gibbs
-k, key = jax.random.split(k)
-pi, w, c, s = gibbs(ALPHA_PI, ALPHA_W, l, key, x, num_steps=100)
+key, subkey = jax.random.split(key)
+pi, w, c, s = gibbs(ALPHA_PI, ALPHA_W, l, subkey, x, num_steps=1000)
 
 # %%
-jnp.exp(pi)
+from mm_viz.mixture_model import sbc
+keys = jax.random.split(key, 1000)
+pi_gt, w_gt, c_gt, x, pi, w, c, s = jax.vmap(sbc, in_axes=(None, None, None, None, None, None, 0))(l, K, categories, N, ALPHA_PI, ALPHA_W, keys)
 
 # %%
-jnp.exp(w)
+jnp.exp(pi[:, -1, 0]).mean(axis=0)
+
+# %%
+jnp.exp(pi_gt[:, 0]).mean(axis=0)
+
+# %%
+jnp.exp(w[:, -1, 0, :, 0]).mean()
+
+# %%
+jnp.exp(w_gt[:, 0, :, 0]).mean()
 
 # %%
 from plotnine import ggplot, aes, geom_line, labs
@@ -43,4 +57,6 @@ plot = (ggplot(df, aes(x='step', y='score'))
 plot
 
 # %%
-s
+from mm_viz.mixture_model import score_pi, score_w, score_c, score_x, score
+score_pi(ALPHA_PI, pi[-1])
+# %%
