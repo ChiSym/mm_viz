@@ -14,19 +14,21 @@ def smc(data, nparticles):
     # initialize particles 
     particles = initialize_particles()
     def smc_step(particles, data_index):
+        new_particles = []
         weights = []
         for particle in particles:
             # incorporate new datapoint into each particle: assign to cluster using likelihood
             # based on existing cluster weights + params, and then continue with gibbs updates
             # to weights and params
             new_particle = gibbs_proposal(particle, data[data_index])
+            new_particles.append(new_particle)
 
             # compute updated particle weight 
             weight = compute_weight(new_particle, data)
             weights.append(weight)
         
         # resample particles using updated weights
-        particles = resample(particles, weights)
+        particles = resample(new_particles, weights)
         return particles
     
     for data_index in range(data.shape[0]):
@@ -45,3 +47,5 @@ def compute_weight():
 
 def resample():
     pass
+
+# questions: SMCP3?
