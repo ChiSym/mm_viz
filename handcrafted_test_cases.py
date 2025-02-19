@@ -23,8 +23,8 @@ x = jax.nn.one_hot(x, 2)
 x.shape
 
 # %%
-ALPHA_PI = 1
-ALPHA_W = 1
+ALPHA_W = 1 # alpha for cluster weights
+ALPHA_P = 1 # alpha for cluster params
 l = 2 # num clusters
 categories = 2 # num categories
 N = 100 
@@ -34,11 +34,11 @@ key = jax.random.key(1234)
 # %%
 from mm_viz.mixture_model import gibbs
 subkey, key = jax.random.split(key)
-pi, w, c, s = gibbs(ALPHA_PI, ALPHA_W, l, subkey, x, num_steps=1000)
+weights, params, assignments, s = gibbs(ALPHA_W, ALPHA_P, l, subkey, x, num_steps=1000)
 
 # %%
 from mm_viz.viz import plot_w
-ani = plot_w(w)
+ani = plot_w(params)
 
 # %%
 ani.save('local_minimum.gif')
