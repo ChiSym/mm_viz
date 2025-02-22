@@ -10,42 +10,28 @@ from functools import partial
 # 4. refactor into GenJAX
 
 # following is very high level psuedocode!
-# TODO: refactor using jax.lax.scan and parallel particle/weight updates at each time step
 def smc(ALPHA_W, ALPHA_P, key, data, nparticles, num_clusters, num_categories):
     # initialize particles 
     N, K, _ = data.shape
     particles = initialize_particles(ALPHA_W, ALPHA_P, key, num_clusters, K, num_categories, nparticles)
     def smc_step(key, particles, data_index):
-        # new_particles = []
-        # weights = []
-        # key1, key2 = jax.random.split(key, 2)
-
-        def update_particle(ALPHA_W, ALPHA_P, key, data_index, cluster_weights, cluster_params, cluster_assignments):
-            particle = (cluster_weights, cluster_params, cluster_assignments)
+        new_particles = []
+        weights = []
+        key1, key2 = jax.random.split(key, 2)
+        for particle in particles:
+            # incorporate new datapoint into each particle: assign to cluster using likelihood
+            # based on existing cluster weights + params, and then continue with gibbs updates
+            # to weights and params
             d  = data[:data_index + 1]
-            new_particle = gibbs_proposal(ALPHA_W, ALPHA_P, key, particle, d)
+            new_particle = gibbs_proposal(ALPHA_W, ALPHA_P, key1, particle, d)
+            new_particles.append(new_particle)
+
+            # compute updated particle weight 
             weight = compute_weight(ALPHA_W, ALPHA_P, new_particle, d)
-            return (new_particle[0], new_particle[1], new_particle[2], weight)
-
-        key, subkey = jax.random.split(key)
-        keys = jax.random.split(subkey, nparticles)
-        new_particles = jax.vmap(update_particle, in_axes=(None, None, 0, None, 0, 0, 0))(ALPHA_W, ALPHA_P, keys, data_index, particles[0], particles[1], particles[2])
-        weights = new_particles[3]
-        
-        # for particle in particles:
-        #     # incorporate new datapoint into each particle: assign to cluster using likelihood
-        #     # based on existing cluster weights + params, and then continue with gibbs updates
-        #     # to weights and params
-        #     d  = data[:data_index + 1]
-        #     new_particle = gibbs_proposal(ALPHA_W, ALPHA_P, key1, particle, d)
-        #     new_particles.append(new_particle)
-
-        #     # compute updated particle weight 
-        #     weight = compute_weight(ALPHA_W, ALPHA_P, new_particle, d)
-        #     weights.append(weight)
+            weights.append(weight)
         
         # resample particles using updated weights; TODO: don't do this at every iteration!
-        particles = resample(key, new_particles, jnp.array(weights))
+        particles = resample(key2, new_particles, jnp.array(weights))
         return particles
     
     keys = jax.random.split(key, N)
@@ -55,27 +41,17 @@ def smc(ALPHA_W, ALPHA_P, key, data, nparticles, num_clusters, num_categories):
     return particles
 
 def initialize_particles(ALPHA_W, ALPHA_P, key, l, K, categories, nparticles):
-    # particles = []
+    particles = []
+    for i in range(nparticles):
+        key, subkey = jax.random.split(key)
+        weights = jnp.log(jax.random.dirichlet(subkey, ALPHA_W * jnp.ones(l)))
 
-    def init_particle(ALPHA_W, ALPHA_P, key, l, K, categories, i):
-        weights = jnp.log(jax.random.dirichlet(key, ALPHA_W * jnp.ones(l)))
-
-        _, subkey = jax.random.split(key)
+        key, subkey = jax.random.split(key)
         params = jnp.log(jax.random.dirichlet(subkey, ALPHA_P * jnp.ones((l, K, categories))))
-        particle = [weights, params, i]
-        return particle
+        particle = (weights, params, None)
+        particles.append(particle)
 
-    # for i in range(nparticles):
-    #     key, subkey = jax.random.split(key)
-    #     weights = jnp.log(jax.random.dirichlet(subkey, ALPHA_W * jnp.ones(l)))
-
-    #     key, subkey = jax.random.split(key)
-    #     params = jnp.log(jax.random.dirichlet(subkey, ALPHA_P * jnp.ones((l, K, categories))))
-    #     particle = (weights, params, None)
-    #     particles.append(particle)
-
-    keys = jax.random.split(key, nparticles)
-    return jax.vmap(init_particle, in_axes=(None, None, 0, None, None, None, 0))(ALPHA_W, ALPHA_P, keys, l, K, categories, jnp.arange(nparticles))
+    return particles
 
 def gibbs_proposal(ALPHA_W: float, ALPHA_P: float, key, particle, data):
     weights, params, assignments = particle 
@@ -84,7 +60,7 @@ def gibbs_proposal(ALPHA_W: float, ALPHA_P: float, key, particle, data):
     # create new assignments by assigning new datapoint to cluster
     new_datapoint = data[-1]
     c = gibbs_assignments(key1, weights, new_datapoint[None, :], params)
-    if assignments.shape == ():
+    if assignments is None:
         new_assignments = c
     else:          
         new_assignments = jnp.vstack((assignments, c))
@@ -147,14 +123,9 @@ def resample(key, particles, weights):
     logZ = jax.nn.logsumexp(jnp.array(weights))
     normalized_weights = weights - logZ
     indices = jax.random.categorical(key, normalized_weights * jnp.ones_like(weights[:, None]))
-    
-    def get_particle(index):
-        return (particles[0][index], particles[1][index], particles[2][index])
-    
-    new_particles = jax.vmap(get_particle)(indices)
-    # new_particles = []
-    # for i in indices:
-    #     new_particles.append(particles[i])
+    new_particles = []
+    for i in indices:
+        new_particles.append(particles[i])
     return new_particles
 
 # questions: SMCP3?
